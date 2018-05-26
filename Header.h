@@ -1,1046 +1,1151 @@
-#include <algorithm>
-#include <fstream>
-#include <istream>
-#include <map>
-#include <ostream>
-#include <queue>
-#include <sstream>
 #include <string>
-#include <utility>
 #include <vector>
+#include <fstream>
+#include <sstream>
+#include <map>
+#include <algorithm>
+#include <queue>
+#include <functional>
 #include <stack>
-#include <iostream>
+
+using namespace std;
+
+class AdjMatrixGraphRepresentation;
+class AdjListGraphRepresentation;
+class EdgeListGraphRepresentation;
+class Graph;
+
+typedef vector<vector<int>*>* AdjacencyMatrix;
+typedef vector<map<int, int>*>* AdjacencyList;
+typedef map<pair<int, int>, int>* EdgeList;
+typedef map<int, int>* Vertexes;
+typedef vector<map<int, bool>*>* MarkedEdges;
+
+
+class StringParser
+{
+public:
+	static vector<string> split(const string& str, char c)
+	{
+		vector<string> result;
+		istringstream stream(str);
+		string token;
+		while (getline(stream, token, c))
+			result.push_back(token);
+		return result;
+	}
+};
 
 class DSU {
 private:
-	std::vector<int> p;
-	std::vector<int> r;
+	vector<int>* parent;
+	vector<int>* size;
 
 public:
-	DSU(int n)
-		: p(n + 1), r(n + 1)
-	{
-		for (int i = 0; i <= n; ++i) {
-			make(i);
+	DSU() {}
+	DSU(int n) {
+		parent = new vector<int>(n);
+		size = new vector<int>(n);
+	}
+	~DSU() {
+		delete parent;
+		delete size;
+	}
+
+	void makeSet(int v) {
+		(*parent)[v] = v;
+		(*size)[v] = 1;
+	}
+
+	int find(int x) {
+		if ((*parent)[x] == x)
+			return x;
+		int xRoot = find((*parent)[x]);
+		(*parent)[x] = xRoot;
+		return xRoot;
+	}
+
+	void unite(int x, int y) {
+		int xRoot = find(x);
+		int yRoot = find(y);
+		if (xRoot != yRoot) {
+			if ((*size)[xRoot] >= (*size)[yRoot])
+			{
+				(*size)[xRoot] += (*size)[yRoot];
+				(*parent)[yRoot] = xRoot;
+			}
+			else
+			{
+				(*size)[yRoot] += (*size)[xRoot];
+				(*parent)[xRoot] = yRoot;
+			}
 		}
 	}
 
-	void make(int v) {
-		p[v] = v;
-		r[v] = 0;
-	}
-
-	int find(int v) {
-		if (v == p[v]) {
-			return v;
-		}
-		return p[v] = find(p[v]);
-	}
-
-	void join(int a, int b) {
-		a = find(a);
-		b = find(b);
-		if (a != b) {
-			if (r[a] < r[b]) {
-				p[a] = b;
-			}
-			else {
-				p[b] = a;
-			}
-			if (r[a] == r[b]) {
-				++r[a];
-			}
-		}
+	map<int, int> getRoots() {
+		map<int, int> roots = map<int, int>();
+		for (int i = 0; i < parent->size(); ++i)
+			if (i == (*parent)[i])
+				roots[i] = (*size)[i];
+		return roots;
 	}
 };
 
-class IGraph {
+
+class GraphRepresentation
+{
+protected:
+	bool isOriented, isWeighted;
+	Vertexes vertexDegrees = nullptr;
+	virtual DSU* buildDSU() = 0;
+
 public:
-	virtual ~IGraph() = default;
 
-	virtual void readGraph(std::istream& stream) = 0;
-	virtual void writeGraph(std::ostream& stream) = 0;
+	int edgesAmount = 0;
+	GraphRepresentation() = default;
+	virtual ~GraphRepresentation() = default;
 
+	virtual void readGraph(istream& stream, vector<string> parameters) = 0;
 	virtual void addEdge(int from, int to, int weight) = 0;
 	virtual void removeEdge(int from, int to) = 0;
-	virtual int  changeEdge(int from, int to, int weight) = 0;
-	virtual int  getEdge(int from, int to) = 0;
-
-	virtual IGraph* transformToAdjMatrix() = 0;
-	virtual IGraph* transformToAdjList() = 0;
-	virtual IGraph* transformToListOfEdges() = 0;
-
-	virtual std::vector<std::vector<int>>& getAdjMatrix() {
-		throw 0;
-	}
-
-	virtual std::vector<std::map<int, int>>& getAdjList() {
-		throw 0;
-	}
-
-	virtual std::vector<std::tuple<int, int, int>>& getListOfEdges() {
-		throw 0;
-	}
-
-	virtual IGraph* getCopy() = 0;
-	virtual void    getProperties(int& n, int& r, int& w) = 0;
-	virtual int     getSize() = 0;
-};
-
-class AdjMatrixGraph : public IGraph {
-private:
-	std::vector<std::vector<int>> data;
-	int n;
-	int r;
-	int w;
-
-public:
-	AdjMatrixGraph(int n = 0, int r = 0, int w = 0)
-		: data(n, std::vector<int>(n, 0)), n(n), r(r), w(w)
-	{
-	}
-
-	void readGraph(std::istream& stream) override;
-	void writeGraph(std::ostream& stream) override;
-
-	void addEdge(int from, int to, int weight) override;
-	void removeEdge(int from, int to) override;
-	int  changeEdge(int from, int to, int weight) override;
-	int  getEdge(int from, int to) override;
-
-	IGraph* transformToAdjMatrix() override;
-	IGraph* transformToAdjList() override;
-	IGraph* transformToListOfEdges() override;
-
-	std::vector<std::vector<int>>& getAdjMatrix() override;
-
-	IGraph* getCopy() override;
-	void    getProperties(int& n, int& r, int& w) override;
-	int     getSize() override;
-};
-
-class AdjListGraph : public IGraph {
-private:
-	std::vector<std::map<int, int>> data;
-	int n;
-	int r;
-	int w;
-
-public:
-	AdjListGraph(int n = 0, int r = 0, int w = 0)
-		: data(n), n(n), r(r), w(w)
-	{
-	}
-
-	void readGraph(std::istream& stream) override;
-	void writeGraph(std::ostream& stream) override;
-
-	void addEdge(int from, int to, int weight) override;
-	void removeEdge(int from, int to) override;
-	int  changeEdge(int from, int to, int weight) override;
-	int  getEdge(int from, int to) override;
-
-	IGraph* transformToAdjMatrix() override;
-	IGraph* transformToAdjList() override;
-	IGraph* transformToListOfEdges() override;
-
-	std::vector<std::map<int, int>>& getAdjList() override;
-
-	IGraph* getCopy() override;
-	void    getProperties(int& n, int& r, int& w) override;
-	int     getSize() override;
-};
-
-class ListOfEdgesGraph : public IGraph {
-public:
-	struct EdgeComparator {
-		bool operator()(const std::tuple<int, int, int>& a, const std::tuple<int, int, int>& b) {
-			int aa;
-			int ba;
-			int wa;
-			int ab;
-			int bb;
-			int wb;
-			std::tie(aa, ba, wa) = a;
-			std::tie(ab, bb, wb) = b;
-			if (wa < wb) {
-				return true;
-			}
-			else if (wa == wb) {
-				if (aa < ab) {
-					return true;
-				}
-				else if (aa == ab) {
-					if (ba < bb) {
-						return true;
-					}
-				}
-			}
-			return false;
+	virtual int changeEdge(int from, int to, int newWeight) = 0;
+	virtual AdjMatrixGraphRepresentation* transformToAdjMatrix() = 0;
+	virtual AdjListGraphRepresentation* transformToAdjList() = 0;
+	virtual EdgeListGraphRepresentation* transformToListOfEdges() = 0;
+	virtual void writeGraph(string fileName) = 0;
+	virtual bool isAdjMatrixGraph() = 0;
+	virtual bool isAdjListGraph() = 0;
+	virtual bool isEdgeListGraph() = 0;
+	int getBeginVertex(bool& circleExists) {
+		int evenVertexesAmount = 0;
+		int oddVertex = -1;
+		for (auto it = vertexDegrees->begin(); it != vertexDegrees->end(); ++it) {
+			if (it->second % 2 == 0)
+				++evenVertexesAmount;
+			else
+				oddVertex = it->first;
 		}
+		circleExists = evenVertexesAmount == vertexDegrees->size();
+		if (circleExists)
+			return 0;
+		if (vertexDegrees->size() - evenVertexesAmount <= 2)
+			return oddVertex;
+		return -1;
+	}
+	bool connectedComponentsCheck() {
+		DSU* dsu = buildDSU();
+		map<int, int> roots = dsu->getRoots();
+		if (roots.size() <= 1)
+			return true;
+		int nonEmptyComponentsAmount = 0;
+		for (auto it = roots.begin(); it != roots.end(); ++it)
+			if (it->second > 1)
+				nonEmptyComponentsAmount++;
+		return nonEmptyComponentsAmount <= 1;
+	}
+
+	virtual int calc() = 0;
+};
+
+class AdjMatrixGraphRepresentation : GraphRepresentation
+{
+	AdjacencyMatrix adjacencyMatrix = nullptr;
+	AdjacencyMatrix readMatrix(istream& stream, int vertexAmount)
+	{
+		const AdjacencyMatrix matrix = new vector<vector<int>*>(vertexAmount);
+		vertexDegrees = new map<int, int>();
+		for (size_t i = 0; i < vertexAmount; ++i)
+		{
+			(*vertexDegrees)[i] = 0;
+			(*matrix)[i] = new vector<int>(vertexAmount);
+			string line;
+			getline(stream, line);
+			vector<string> tokens = StringParser::split(line, ' ');
+			for (size_t j = 0; j < vertexAmount; ++j) {
+				int weight = stoi(tokens[j]);
+				(*(*matrix)[i])[j] = weight;
+				if (weight > 0) {
+					++(*vertexDegrees)[i];
+					++edgesAmount;
+					if (!isOriented)
+						++(*vertexDegrees)[j];
+				}
+			}
+		}
+		return matrix;
+	}
+	static void writeMatrix(ostream& stream, AdjacencyMatrix matrix)
+	{
+		for (size_t i = 0; i < matrix->size(); ++i)
+		{
+			for (size_t j = 0; j < matrix->size(); ++j)
+			{
+				stream << (*(*matrix)[i])[j];
+				if (j < matrix->size() - 1)
+					stream << " ";
+			}
+			if (i < matrix->size() - 1)
+				stream << endl;
+		}
+	}
+	void copy(const AdjMatrixGraphRepresentation& graph) {
+		this->isOriented = graph.isOriented;
+		this->isWeighted = graph.isWeighted;
+		this->edgesAmount = graph.edgesAmount;
+		this->vertexDegrees = new map<int, int>(*graph.vertexDegrees);
+		this->adjacencyMatrix = new vector<vector<int>*>(graph.adjacencyMatrix->size());
+		for (size_t i = 0; i < adjacencyMatrix->size(); ++i)
+			(*adjacencyMatrix)[i] = new vector<int>(*(*graph.adjacencyMatrix)[i]);
+	}
+	DSU* buildDSU() {
+		DSU* dsu = new DSU(adjacencyMatrix->size());
+		for (int i = 0; i < adjacencyMatrix->size(); ++i)
+			dsu->makeSet(i);
+		for (int i = 0; i < adjacencyMatrix->size(); ++i)
+			for (int j = 0; j < adjacencyMatrix->size(); ++j)
+				dsu->unite(i, j);
+		return dsu;
+	}
+
+public:
+	AdjMatrixGraphRepresentation() = default;
+	AdjMatrixGraphRepresentation(int vertexAmount, int edgesAmount, bool isOriented, bool isWeighted)
+	{
+		this->vertexDegrees = new map<int, int>();
+		this->adjacencyMatrix = new vector<vector<int>*>(vertexAmount);
+		for (int i = 0; i < vertexAmount; ++i)
+			(*adjacencyMatrix)[i] = new vector<int>(vertexAmount, 0);
+		this->isOriented = isOriented;
+		this->isWeighted = isWeighted;
+		this->edgesAmount = edgesAmount;
+	}
+	AdjMatrixGraphRepresentation(const AdjMatrixGraphRepresentation& graph)
+	{
+		copy(graph);
+	}
+	~AdjMatrixGraphRepresentation()
+	{
+		delete vertexDegrees;
+		for (int i = 0; i < adjacencyMatrix->size(); ++i)
+			delete (*adjacencyMatrix)[i];
+		delete adjacencyMatrix;
 	};
-
-private:
-	std::vector<std::tuple<int, int, int>> data;
-	int n;
-	int m;
-	int r;
-	int w;
-
-public:
-	ListOfEdgesGraph(int n = 0, int m = 0, int r = 0, int w = 0)
-		: n(n), m(m), r(r), w(w)
-	{
+	AdjMatrixGraphRepresentation& operator=(const AdjMatrixGraphRepresentation& graph) {
+		copy(graph);
+		return *this;
 	}
 
-	void readGraph(std::istream& stream) override;
-	void writeGraph(std::ostream& stream) override;
+	bool isAdjMatrixGraph() override { return true; }
+	bool isAdjListGraph() override { return false; }
+	bool isEdgeListGraph() override { return false; }
 
-	void addEdge(int from, int to, int weight) override;
-	void removeEdge(int from, int to) override;
-	int  changeEdge(int from, int to, int weight) override;
-	int  getEdge(int from, int to) override;
+	void readGraph(istream& stream, vector<string> parameters) override
+	{
+		const int vertexAmount = stoi(parameters[1]);
 
-	IGraph* transformToAdjMatrix() override;
-	IGraph* transformToAdjList() override;
-	IGraph* transformToListOfEdges() override;
+		isOriented = parameters[2] == "1";
+		isWeighted = parameters[3] == "1";
 
-	std::vector<std::tuple<int, int, int>>& getListOfEdges() override;
+		adjacencyMatrix = readMatrix(stream, vertexAmount);
+	}
 
-	IGraph* getCopy() override;
-	void    getProperties(int& n, int& r, int& w) override;
-	int     getSize() override;
+
+	void addEdge(int from, int to, int weight) override
+	{
+		++edgesAmount;
+		++(*vertexDegrees)[from];
+		(*(*adjacencyMatrix)[from])[to] = weight;
+		if (!isOriented) {
+			++(*vertexDegrees)[to];
+			(*(*adjacencyMatrix)[to])[from] = weight;
+		}
+	}
+
+
+	void removeEdge(int from, int to)  override
+	{
+		--edgesAmount;
+		--(*vertexDegrees)[from];
+		(*(*adjacencyMatrix)[from])[to] = 0;
+		if (!isOriented) {
+			--(*vertexDegrees)[to];
+			(*(*adjacencyMatrix)[to])[from] = 0;
+		}
+	}
+
+
+	int changeEdge(int from, int to, int newWeight)  override
+	{
+		const int oldWeight = (*(*adjacencyMatrix)[from])[to];
+		addEdge(from, to, newWeight);
+		return oldWeight;
+	}
+
+
+	AdjMatrixGraphRepresentation* transformToAdjMatrix()  override
+	{
+		return this;
+	}
+
+
+	AdjListGraphRepresentation* transformToAdjList()  override;
+
+
+	EdgeListGraphRepresentation* transformToListOfEdges()  override;
+
+
+	void writeGraph(string fileName) override
+	{
+		ofstream file(fileName);
+		file << "C " << adjacencyMatrix->size() << endl;
+		file << (isOriented ? "1 " : "0 ") << (isWeighted ? "1" : "0") << endl;
+
+		writeMatrix(file, adjacencyMatrix);
+
+		file.close();
+	}
+
+
+	int calc() {
+		return 0;
+	}
+
+	friend Graph;
 };
 
-void AdjMatrixGraph::readGraph(std::istream& stream) {
-	stream >> n;
-	stream >> r >> w;
-	std::vector<std::vector<int>>(n, std::vector<int>(n, 0)).swap(data);
-	for (int i = 0; i < n; ++i) {
-		for (int j = 0; j < n; ++j) {
-			stream >> data[i][j];
-		}
-	}
-}
-
-void AdjMatrixGraph::writeGraph(std::ostream& stream) {
-	stream << "C" << " " << n << "\n";
-	stream << r << " " << w << "\n";
-	for (int i = 0; i < n; ++i) {
-		for (int j = 0; j < n; ++j) {
-			stream << data[i][j] << ((j < n - 1) ? " " : "\n");
-		}
-	}
-}
-
-void AdjMatrixGraph::addEdge(int from, int to, int weight) {
-	if (!r)
-		weight = 1;
-	data[from - 1][to - 1] = weight;
-	if (r == 0) {
-		data[to - 1][from - 1] = weight;
-	}
-}
-
-void AdjMatrixGraph::removeEdge(int from, int to) {
-	data[from - 1][to - 1] = 0;
-	if (r == 0) {
-		data[to - 1][from - 1] = 0;
-	}
-}
-
-int AdjMatrixGraph::changeEdge(int from, int to, int weight) {
-	auto temp = data[from - 1][to - 1];
-	data[from - 1][to - 1] = weight;
-	if (r == 0) {
-		data[to - 1][from - 1] = weight;
-	}
-	return temp;
-}
-
-int AdjMatrixGraph::getEdge(int from, int to) {
-	return (data[from - 1][to - 1] != 0) ? data[from - 1][to - 1] : -1;
-}
-
-IGraph* AdjMatrixGraph::transformToAdjMatrix() {
-	return this;
-}
-
-IGraph* AdjMatrixGraph::transformToAdjList() {
-	auto temp = new AdjListGraph(n, r, w);
-	for (int i = 0; i < n; ++i) {
-		for (int j = ((r == 1) ? 0 : i); j < n; ++j) {
-			if (data[i][j] != 0) {
-				temp->addEdge(i + 1, j + 1, data[i][j]);
+class AdjListGraphRepresentation : GraphRepresentation
+{
+	AdjacencyList adjacencyList = nullptr;
+	AdjacencyList readList(istream& stream, int vertexAmount, bool isWeighted)
+	{
+		const AdjacencyList list = new vector<map<int, int>*>(vertexAmount);
+		vertexDegrees = new map<int, int>();
+		for (size_t i = 0; i < vertexAmount; ++i)
+		{
+			(*vertexDegrees)[i] = 0;
+			(*list)[i] = new map<int, int>();
+			string line;
+			getline(stream, line);
+			vector<string> tokens = StringParser::split(line, ' ');
+			for (size_t j = 0; j < tokens.size(); ++j)
+			{
+				int vertexId, weight = 1;
+				if (isWeighted)
+				{
+					vertexId = stoi(tokens[j]) - 1;
+					weight = stoi(tokens[++j]);
+				}
+				else
+					vertexId = stoi(tokens[j]) - 1;
+				++edgesAmount;
+				++(*vertexDegrees)[i];
+				(*(*list)[i])[vertexId] = weight;
+				if (!isOriented)
+					++(*vertexDegrees)[vertexId];
 			}
 		}
+		return list;
 	}
-	return temp;
-}
-
-IGraph* AdjMatrixGraph::transformToListOfEdges() {
-	auto temp = new ListOfEdgesGraph(n, 0, r, w);
-	for (int i = 0; i < n; ++i) {
-		for (int j = ((r == 1) ? 0 : i); j < n; ++j) {
-			if (data[i][j] != 0) {
-				temp->addEdge(i + 1, j + 1, data[i][j]);
+	static void writeList(ostream& stream, AdjacencyList list, bool isWeighted)
+	{
+		for (size_t i = 0; i < list->size(); ++i)
+		{
+			map<int, int>* currentVertexMap = (*list)[i];
+			for (auto edge = currentVertexMap->begin(); edge != currentVertexMap->end(); ++edge)
+			{
+				stream << edge->first + 1;
+				if (isWeighted)
+					stream << " " << edge->second;
+				if (next(edge) != currentVertexMap->end())
+					stream << " ";
 			}
+			if (i < list->size() - 1)
+				stream << endl;
 		}
 	}
-	return temp;
-}
-
-std::vector<std::vector<int>>& AdjMatrixGraph::getAdjMatrix() {
-	return data;
-}
-
-IGraph* AdjMatrixGraph::getCopy() {
-	return new AdjMatrixGraph(*this);
-}
-
-void AdjMatrixGraph::getProperties(int& n, int& r, int& w) {
-	n = this->n;
-	r = this->r;
-	w = this->w;
-}
-
-int AdjMatrixGraph::getSize() {
-	return n;
-}
-
-void AdjListGraph::readGraph(std::istream& stream) {
-	stream >> n;
-	stream >> r >> w;
-	std::vector<std::map<int, int>>(n).swap(data);
-	std::string line;
-	std::getline(stream, line);
-	for (int i = 0; i < n; ++i) {
-		std::getline(stream, line);
-		std::istringstream lineStream(line);
-		int bi = 0;
-		int wi = 0;
-		while (lineStream >> bi) {
-			if (w == 1) {
-				lineStream >> wi;
-			}
-			data[i].emplace(bi, wi);
+	void removeEdgeSimplex(AdjacencyList adjacencyList, int from, int to)
+	{
+		const auto it = (*(*adjacencyList)[from]).find(to);
+		(*(*adjacencyList)[from]).erase(it);
+		--(*vertexDegrees)[from];
+	}
+	void copy(const AdjListGraphRepresentation& graph) {
+		this->isOriented = graph.isOriented;
+		this->isWeighted = graph.isWeighted;
+		this->edgesAmount = graph.edgesAmount;
+		this->vertexDegrees = new map<int, int>(*graph.vertexDegrees);
+		this->adjacencyList = new vector<map<int, int>*>(graph.adjacencyList->size());
+		for (size_t i = 0; i < adjacencyList->size(); ++i)
+			(*adjacencyList)[i] = new map<int, int>(*(*graph.adjacencyList)[i]);
+	}
+	DSU* buildDSU() {
+		DSU* dsu = new DSU(adjacencyList->size());
+		for (int i = 0; i < adjacencyList->size(); ++i)
+			dsu->makeSet(i);
+		for (int i = 0; i < adjacencyList->size(); ++i) {
+			map<int, int>* edges = (*adjacencyList)[i];
+			for (auto it = edges->begin(); it != edges->end(); ++it)
+				dsu->unite(i, it->first);
 		}
+		return dsu;
 	}
-}
-
-void AdjListGraph::writeGraph(std::ostream& stream) {
-	stream << "L" << " " << n << "\n";
-	stream << r << " " << w << "\n";
-	for (int i = 0; i < n; ++i) {
-		std::ostringstream lineStream;
-		for (auto& item : data[i]) {
-			lineStream << item.first << " ";
-			if (w == 1) {
-				lineStream << item.second << " ";
-			}
-		}
-		auto line = lineStream.str();
-		if (!line.empty()) {
-			line.erase(line.end() - 1);
-		}
-		stream << line << "\n";
-	}
-}
-
-void AdjListGraph::addEdge(int from, int to, int weight) {
-	data[from - 1][to] = weight;
-	if (r == 0) {
-		data[to - 1][from] = weight;
-	}
-}
-
-void AdjListGraph::removeEdge(int from, int to) {
-	data[from - 1].erase(to);
-	if (r == 0) {
-		data[to - 1].erase(from);
-	}
-}
-
-int AdjListGraph::changeEdge(int from, int to, int weight) {
-	auto temp = data[from - 1][to];
-	data[from - 1][to] = weight;
-	if (r == 0) {
-		data[to - 1][from] = weight;
-	}
-	return temp;
-}
-
-int AdjListGraph::getEdge(int from, int to) {
-	auto item = data[from - 1].find(to);
-	return (item != data[from - 1].end()) ? item->second : -1;
-}
-
-IGraph* AdjListGraph::transformToAdjMatrix() {
-	auto temp = new AdjMatrixGraph(n, r, w);
-	for (int i = 0; i < n; ++i) {
-		for (auto& item : data[i]) {
-			if ((r == 0) && (i + 1 > item.first)) {
-				continue;
-			}
-			temp->addEdge(i + 1, item.first, item.second);
-		}
-	}
-	return temp;
-}
-
-IGraph* AdjListGraph::transformToAdjList() {
-	return this;
-}
-
-IGraph* AdjListGraph::transformToListOfEdges() {
-	auto temp = new ListOfEdgesGraph(n, 0, r, w);
-	for (int i = 0; i < n; ++i) {
-		for (auto& item : data[i]) {
-			if ((r == 0) && (i + 1 > item.first)) {
-				continue;
-			}
-			temp->addEdge(i + 1, item.first, item.second);
-		}
-	}
-	return temp;
-}
-
-std::vector<std::map<int, int>>& AdjListGraph::getAdjList() {
-	return data;
-}
-
-IGraph* AdjListGraph::getCopy() {
-	return new AdjListGraph(*this);
-}
-
-void AdjListGraph::getProperties(int& n, int& r, int& w) {
-	n = this->n;
-	r = this->r;
-	w = this->w;
-}
-
-int AdjListGraph::getSize() {
-	return n;
-}
-
-void ListOfEdgesGraph::readGraph(std::istream& stream) {
-	stream >> n >> m;
-	stream >> r >> w;
-	for (int i = 0; i < m; ++i) {
-		int ai = 0;
-		int bi = 0;
-		int wi = 0;
-		stream >> ai >> bi;
-		if (w == 1) {
-			stream >> wi;
-		}
-		if ((r == 0) && (ai > bi)) {
-			std::swap(ai, bi);
-		}
-		data.emplace_back(ai, bi, wi);
-	}
-}
-
-void ListOfEdgesGraph::writeGraph(std::ostream& stream) {
-	stream << "E" << " " << n << " " << m << "\n";
-	stream << r << " " << w << "\n";
-	for (int i = 0; i < m; ++i) {
-		int ai;
-		int bi;
-		int wi;
-		std::tie(ai, bi, wi) = data[i];
-		stream << ai << " " << bi;
-		if (w == 1) {
-			stream << " " << wi;
-		}
-		stream << "\n";
-	}
-}
-
-void ListOfEdgesGraph::addEdge(int from, int to, int weight) {
-	if ((r == 0) && (from > to)) {
-		std::swap(from, to);
-	}
-	data.emplace_back(from, to, weight);
-	++m;
-}
-
-void ListOfEdgesGraph::removeEdge(int from, int to) {
-	if ((r == 0) && (from > to)) {
-		std::swap(from, to);
-	}
-	auto edge = std::find_if(data.begin(), data.end(), [from, to](std::tuple<int, int, int>& edge) {
-		return (std::get<0>(edge) == from) && (std::get<1>(edge) == to);
-	});
-	data.erase(edge);
-	--m;
-}
-
-int ListOfEdgesGraph::changeEdge(int from, int to, int weight) {
-	if ((r == 0) && (from > to)) {
-		std::swap(from, to);
-	}
-	auto edge = std::find_if(data.begin(), data.end(), [from, to](std::tuple<int, int, int>& edge) {
-		return (std::get<0>(edge) == from) && (std::get<1>(edge) == to);
-	});
-	std::swap(std::get<2>(*edge), weight);
-	return weight;
-}
-
-int ListOfEdgesGraph::getEdge(int from, int to) {
-	if ((r == 0) && (from > to)) {
-		std::swap(from, to);
-	}
-	auto edge = std::find_if(data.begin(), data.end(), [from, to](std::tuple<int, int, int>& edge) {
-		return (std::get<0>(edge) == from) && (std::get<1>(edge) == to);
-	});
-	return (edge != data.end()) ? std::get<2>(*edge) : -1;
-}
-
-IGraph* ListOfEdgesGraph::transformToAdjMatrix() {
-	auto temp = new AdjMatrixGraph(n, r, w);
-	for (auto& edge : data) {
-		int ai;
-		int bi;
-		int wi;
-		std::tie(ai, bi, wi) = edge;
-		temp->addEdge(ai, bi, wi);
-	}
-	return temp;
-}
-
-IGraph* ListOfEdgesGraph::transformToAdjList() {
-	auto temp = new AdjListGraph(n, r, w);
-	for (auto& edge : data) {
-		int ai;
-		int bi;
-		int wi;
-		std::tie(ai, bi, wi) = edge;
-		temp->addEdge(ai, bi, wi);
-	}
-	return temp;
-}
-
-IGraph* ListOfEdgesGraph::transformToListOfEdges() {
-	return this;
-}
-
-std::vector<std::tuple<int, int, int>>& ListOfEdgesGraph::getListOfEdges() {
-	return data;
-}
-
-IGraph* ListOfEdgesGraph::getCopy() {
-	return new ListOfEdgesGraph(*this);
-}
-
-void ListOfEdgesGraph::getProperties(int& n, int& r, int& w) {
-	n = this->n;
-	r = this->r;
-	w = this->w;
-}
-
-int ListOfEdgesGraph::getSize() {
-	return n;
-}
-
-class Graph {
-private:
-	struct QueueComparator {
-		bool operator()(const std::pair<int, int>& a, const std::pair<int, int>& b) {
-			int av;
-			int aw;
-			int bv;
-			int bw;
-			std::tie(av, aw) = a;
-			std::tie(bv, bw) = b;
-			if ((aw == -1) && (bw != -1)) {
-				return true;
-			}
-			if ((aw != -1) && (bw == -1)) {
-				return false;
-			}
-
-			if (aw > bw) {
-				return true;
-			}
-			if (aw == bw) {
-				return av > bv;
-			}
-			return false;
-		}
-	};
-
-private:
-	IGraph* graph;
-	char type;
 
 public:
-	Graph(char type, int n, int r, int w) {
-		this->type = type;
-		switch (type) {
-		case 'C':
-			graph = new AdjMatrixGraph(n, r, w);
-			break;
-		case 'L':
-			graph = new AdjListGraph(n, r, w);
-			break;
-		case 'E':
-			graph = new ListOfEdgesGraph(n, 0, r, w);
-			break;
-		}
-	}
-
-	Graph(const Graph& other)
-		: graph(other.graph->getCopy())
+	AdjListGraphRepresentation() = default;
+	AdjListGraphRepresentation(int vertexAmount, int edgesAmount, bool isOriented, bool isWeighted)
 	{
-		this->type = other.type;
+		this->vertexDegrees = new map<int, int>();
+		this->edgesAmount = edgesAmount;
+		this->adjacencyList = new vector<map<int, int>*>(vertexAmount);
+		for (int i = 0; i < adjacencyList->size(); ++i)
+			(*adjacencyList)[i] = new map<int, int>();
+		this->isOriented = isOriented;
+		this->isWeighted = isWeighted;
 	}
-
-	Graph()
-		: graph(nullptr)
+	AdjListGraphRepresentation(const AdjListGraphRepresentation& graph) {
+		copy(graph);
+	}
+	~AdjListGraphRepresentation()
 	{
+		delete vertexDegrees;
+		for (size_t i = 0; i < adjacencyList->size(); ++i)
+			delete (*adjacencyList)[i];
+		delete adjacencyList;
+	}
+	AdjListGraphRepresentation& operator=(const AdjListGraphRepresentation& graph) {
+		copy(graph);
+		return *this;
 	}
 
-	~Graph() {
-		if (graph != nullptr) {
-			delete graph;
+	bool isAdjMatrixGraph() override { return false; }
+	bool isAdjListGraph() override { return true; }
+	bool isEdgeListGraph() override { return false; }
+
+	void readGraph(istream& stream, vector<string> parameters) override
+	{
+		const int vertexAmount = stoi(parameters[1]);
+
+		isOriented = parameters[2] == "1";
+		isWeighted = parameters[3] == "1";
+
+		adjacencyList = readList(stream, vertexAmount, isWeighted);
+	}
+
+
+	void addEdge(int from, int to, int weight) override
+	{
+		++edgesAmount;
+		++(*vertexDegrees)[from];
+		(*(*adjacencyList)[from])[to] = weight;
+		if (!isOriented) {
+			++(*vertexDegrees)[to];
+			(*(*adjacencyList)[to])[from] = weight;
 		}
 	}
 
-	void readGraph(std::string fileName) {
-		std::ifstream file(fileName);
-		switch (file.get()) {
-		case 'C':
-			graph = new AdjMatrixGraph();
-			type = 'C';
-			break;
-		case 'L':
-			graph = new AdjListGraph();
-			type = 'L';
-			break;
-		case 'E':
-			graph = new ListOfEdgesGraph();
-			type = 'E';
-			break;
-		}
-		graph->readGraph(file);
+
+	void removeEdge(int from, int to)  override
+	{
+		--edgesAmount;
+		removeEdgeSimplex(adjacencyList, from, to);
+		if (!isOriented)
+			removeEdgeSimplex(adjacencyList, to, from);
 	}
 
-	void writeGraph(std::string fileName) {
-		std::ofstream file(fileName);
-		graph->writeGraph(file);
+
+	int changeEdge(int from, int to, int newWeight)  override
+	{
+		const int oldWeight = (*(*adjacencyList)[from])[to];
+		addEdge(from, to, newWeight);
+		return oldWeight;
 	}
 
-	void addEdge(int from, int to, int weight) {
-		graph->addEdge(from, to, weight);
+
+	AdjMatrixGraphRepresentation* transformToAdjMatrix()  override;
+
+
+	AdjListGraphRepresentation* transformToAdjList()  override { return this; }
+
+
+	EdgeListGraphRepresentation* transformToListOfEdges()  override;
+
+
+	void writeGraph(string fileName) override
+	{
+		ofstream file(fileName);
+		file << "L " << adjacencyList->size() << endl;
+		file << (isOriented ? "1 " : "0 ") << (isWeighted ? "1" : "0") << endl;
+
+		writeList(file, adjacencyList, isWeighted);
+
+		file.close();
 	}
 
-	void removeEdge(int from, int to) {
-		graph->removeEdge(from, to);
+
+	int calc() {
+		return 0;
 	}
 
-	int changeEdge(int from, int to, int weight) {
-		return graph->changeEdge(from, to, weight);
-	}
 
-	void transformToAdjMatrix() {
-		auto temp = graph->transformToAdjMatrix();
-		type = 'C';
-		if (temp != graph) {
-			delete graph;
-			graph = temp;
-		}
-	}
+	AdjacencyList copyListWithDuplicates() {
+		AdjacencyList adjList = new vector<map<int, int>*>(adjacencyList->size());
+		for (size_t i = 0; i < adjacencyList->size(); ++i)
+			(*adjList)[i] = new map<int, int>();
 
-	void transformToAdjList() {
-		type = 'L';
-		auto temp = graph->transformToAdjList();
-		if (temp != graph) {
-			delete graph;
-			graph = temp;
-		}
-	}
-
-	void transformToListOfEdges() {
-		auto temp = graph->transformToListOfEdges();
-		type = 'E';
-		if (temp != graph) {
-			delete graph;
-			graph = temp;
-		}
-	}
-
-	Graph getSpanningTreeKruscal() {
-		transformToListOfEdges();
-		auto& edges = graph->getListOfEdges();
-		std::sort(edges.begin(), edges.end(), ListOfEdgesGraph::EdgeComparator());
-		int n;
-		int r;
-		int w;
-		graph->getProperties(n, r, w);
-		DSU dsu(n);
-		Graph result('E', n, r, w);
-		int a;
-		int b;
-		int c;
-		for (auto& edge : edges) {
-			std::tie(a, b, c) = edge;
-			if (dsu.find(a) != dsu.find(b)) {
-				dsu.join(a, b);
-				result.addEdge(a, b, c);
+		for (size_t i = 0; i < adjacencyList->size(); ++i)
+			for (auto it = adjacencyList->at(i)->begin(); it != adjacencyList->at(i)->end(); ++it) {
+				(*(*adjList)[i])[it->first] = it->second;
+				if (!isOriented)
+					(*(*adjList)[it->first])[i] = it->second;
 			}
+
+		return adjList;
+	}
+
+	friend Graph;
+};
+
+class EdgeListGraphRepresentation : GraphRepresentation
+{
+	int vertexAmount;
+	EdgeList edgeList = nullptr;
+	EdgeList readList(istream& stream, int edgeAmount)
+	{
+		const EdgeList edgeList = new map<pair<int, int>, int>();
+		vertexDegrees = new map<int, int>();
+		for (size_t i = 0; i < vertexAmount; ++i)
+			(*vertexDegrees)[i] = 0;
+		for (size_t i = 0; i < edgeAmount; ++i)
+		{
+			string line;
+			getline(stream, line);
+			vector<string> edgeParameters = StringParser::split(line, ' ');
+			const int weight = edgeParameters.size() > 2 ? stoi(edgeParameters[2]) : 1;
+			const int from = stoi(edgeParameters[0]) - 1;
+			const int to = stoi(edgeParameters[1]) - 1;
+			(*edgeList)[make_pair(from, to)] = weight;
+			++(*vertexDegrees)[from];
+			if (!isOriented)
+				++(*vertexDegrees)[to];
+		}
+		edgesAmount = edgeList->size();
+		return edgeList;
+	}
+	static void writeList(ostream& stream, EdgeList edgeList, bool isWeighted)
+	{
+		for (auto it = edgeList->begin(); it != edgeList->end(); ++it)
+		{
+			stream << it->first.first + 1 << " " << it->first.second + 1;
+			if (isWeighted)
+				stream << " " << it->second;
+			if (next(it) != edgeList->end())
+				stream << endl;
+		}
+	}
+	void copy(const EdgeListGraphRepresentation& graph) {
+		this->isOriented = graph.isOriented;
+		this->isWeighted = graph.isWeighted;
+		this->vertexAmount = graph.vertexAmount;
+		this->edgesAmount = graph.edgesAmount;
+		this->vertexDegrees = new map<int, int>(*graph.vertexDegrees);
+		this->edgeList = new map<pair<int, int>, int>(*(graph.edgeList));
+	}
+	int getEdgesAmount() {
+		return edgeList->size();
+	}
+	DSU* buildDSU() {
+		DSU* dsu = new DSU(vertexAmount);
+		for (int i = 0; i < vertexAmount; ++i)
+			dsu->makeSet(i);
+		for (auto it = edgeList->begin(); it != edgeList->end(); ++it)
+			dsu->unite(it->first.first, it->first.second);
+		return dsu;
+	}
+
+public:
+	EdgeListGraphRepresentation() = default;
+	EdgeListGraphRepresentation(bool isOriented, bool isWeighted, int vertexAmount, int edgesAmount)
+	{
+		this->vertexDegrees = new map<int, int>();
+		this->edgeList = new map<pair<int, int>, int>();
+		this->isOriented = isOriented;
+		this->isWeighted = isWeighted;
+		this->vertexAmount = vertexAmount;
+		this->edgesAmount = edgesAmount;
+	}
+	EdgeListGraphRepresentation(const EdgeListGraphRepresentation& graph) {
+		copy(graph);
+	}
+	~EdgeListGraphRepresentation()
+	{
+		delete vertexDegrees;
+		delete edgeList;
+	}
+	EdgeListGraphRepresentation& operator=(const EdgeListGraphRepresentation& graph) {
+		copy(graph);
+		return *this;
+	}
+
+	bool isAdjMatrixGraph() override { return false; }
+	bool isAdjListGraph() override { return false; }
+	bool isEdgeListGraph() override { return true; }
+
+	void readGraph(istream& stream, vector<string> parameters) override
+	{
+		vertexAmount = stoi(parameters[1]);
+		int edgeAmount = stoi(parameters[2]);
+
+		isOriented = parameters[3] == "1";
+		isWeighted = parameters[4] == "1";
+
+		edgeList = readList(stream, edgeAmount);
+	}
+
+
+	void addEdge(int from, int to, int weight) override
+	{
+		++edgesAmount;
+		(*edgeList)[make_pair(from, to)] = weight;
+		++(*vertexDegrees)[from];
+		++(*vertexDegrees)[to];
+	}
+
+
+	void removeEdge(int from, int to)  override
+	{
+		--edgesAmount;
+		const pair<int, int> edge = make_pair(from, to);
+		const auto it = edgeList->find(edge);
+		edgeList->erase(it);
+		--(*vertexDegrees)[from];
+		--(*vertexDegrees)[to];
+	}
+
+
+	int changeEdge(int from, int to, int newWeight)  override
+	{
+		const pair<int, int> edge = make_pair(from, to);
+		const int oldWeight = (*edgeList)[edge];
+		(*edgeList)[edge] = newWeight;
+		return oldWeight;
+	}
+
+
+	AdjMatrixGraphRepresentation* transformToAdjMatrix()  override;
+
+
+	AdjListGraphRepresentation* transformToAdjList()  override;
+
+
+	EdgeListGraphRepresentation* transformToListOfEdges()  override { return this; }
+
+
+	void writeGraph(string fileName) override
+	{
+		ofstream file(fileName);
+		file << "E " << vertexAmount << " " << edgeList->size() << endl;
+		file << (isOriented ? "1 " : "0 ") << (isWeighted ? "1" : "0") << endl;
+
+		writeList(file, edgeList, isWeighted);
+
+		file.close();
+	}
+
+	friend Graph;
+
+	int calc() {
+		int result = 0;
+		for (auto it = edgeList->begin(); it != edgeList->end(); ++it) {
+			result += it->second;
 		}
 		return result;
 	}
+};
 
-	Graph getSpanningTreePrima() {
+AdjListGraphRepresentation* AdjMatrixGraphRepresentation::transformToAdjList()
+{
+	AdjListGraphRepresentation* adjListGraph = new AdjListGraphRepresentation(adjacencyMatrix->size(), 0, isOriented, isWeighted);
+
+	for (size_t i = 0; i < adjacencyMatrix->size(); ++i)
+	{
+		for (size_t j = 0; j < adjacencyMatrix->size(); ++j)
+		{
+			int weight = (*(*adjacencyMatrix)[i])[j];
+			if (weight > 0)
+				adjListGraph->addEdge(i, j, weight);
+		}
+	}
+
+	return adjListGraph;
+}
+
+EdgeListGraphRepresentation* AdjMatrixGraphRepresentation::transformToListOfEdges()
+{
+	EdgeListGraphRepresentation* edgeListGraph = new EdgeListGraphRepresentation(isOriented, isWeighted, adjacencyMatrix->size(), 0);
+
+	for (size_t i = 0; i < adjacencyMatrix->size(); ++i)
+		for (size_t j = 0; j < adjacencyMatrix->size(); ++j)
+		{
+			int weight = (*(*adjacencyMatrix)[i])[j];
+			if (weight > 0)
+				edgeListGraph->addEdge(i, j, weight);
+		}
+
+	return edgeListGraph;
+}
+
+AdjMatrixGraphRepresentation* AdjListGraphRepresentation::transformToAdjMatrix()
+{
+	AdjMatrixGraphRepresentation* adjMatrixGraph = new AdjMatrixGraphRepresentation(adjacencyList->size(), 0, isOriented, isWeighted);
+
+	for (size_t i = 0; i < adjacencyList->size(); ++i)
+	{
+		map<int, int>* currentVertexMap = (*adjacencyList)[i];
+		for (auto edge = currentVertexMap->begin(); edge != currentVertexMap->end(); ++edge)
+			adjMatrixGraph->addEdge(i, edge->first, edge->second);
+	}
+
+	return adjMatrixGraph;
+}
+
+EdgeListGraphRepresentation* AdjListGraphRepresentation::transformToListOfEdges()
+{
+	EdgeListGraphRepresentation* edgeListGraph = new EdgeListGraphRepresentation(isOriented, isWeighted, adjacencyList->size(), 0);
+
+	for (size_t i = 0; i < adjacencyList->size(); ++i)
+	{
+		map<int, int>* currentVertexMap = (*adjacencyList)[i];
+		for (auto edge = currentVertexMap->begin(); edge != currentVertexMap->end(); ++edge)
+			edgeListGraph->addEdge(i, edge->first, edge->second);
+	}
+
+	return edgeListGraph;
+}
+
+AdjMatrixGraphRepresentation* EdgeListGraphRepresentation::transformToAdjMatrix()
+{
+	AdjMatrixGraphRepresentation* adjMatrixGraph = new AdjMatrixGraphRepresentation(vertexAmount, 0, isOriented, isWeighted);
+
+	for (auto it = edgeList->begin(); it != edgeList->end(); ++it)
+		adjMatrixGraph->addEdge(it->first.first, it->first.second, it->second);
+
+	return adjMatrixGraph;
+}
+
+AdjListGraphRepresentation* EdgeListGraphRepresentation::transformToAdjList()
+{
+	AdjListGraphRepresentation* adjListGraph = new AdjListGraphRepresentation(vertexAmount, 0, isOriented, isWeighted);
+
+	for (auto it = edgeList->begin(); it != edgeList->end(); ++it)
+		adjListGraph->addEdge(it->first.first, it->first.second, it->second);
+
+	return adjListGraph;
+}
+
+class Graph
+{
+	GraphRepresentation* graphRepresentation = nullptr;
+	static vector<string> getGraphParameters(istream &stream)
+	{
+		vector<string> parameters;
+		string line;
+		for (size_t i = 0; i < 2; i++)
+		{
+			getline(stream, line);
+			for (const string token : StringParser::split(line, ' '))
+				parameters.push_back(token);
+		}
+		return parameters;
+	}
+	static GraphRepresentation* decideRepresentationType(string code)
+	{
+		if (code == "C")
+			return (GraphRepresentation*) new AdjMatrixGraphRepresentation();
+		if (code == "L")
+			return (GraphRepresentation*) new AdjListGraphRepresentation();
+		if (code == "E")
+			return (GraphRepresentation*) new EdgeListGraphRepresentation();
+		return nullptr;
+	}
+	void copy(const Graph& graph) {
+		GraphRepresentation* newGraph = nullptr;
+		if (graph.graphRepresentation->isAdjListGraph())
+			newGraph = (AdjListGraphRepresentation*)graph.graphRepresentation;
+		else if (graph.graphRepresentation->isAdjMatrixGraph())
+			newGraph = (AdjMatrixGraphRepresentation*)graph.graphRepresentation;
+		else if (graph.graphRepresentation->isEdgeListGraph())
+			newGraph = (EdgeListGraphRepresentation*)graph.graphRepresentation;
+		delete graphRepresentation;
+		graphRepresentation = newGraph;
+	}
+	MarkedEdges initMarkedEdges(AdjacencyList adjList) {
+		MarkedEdges bridges = new vector<map<int, bool>*>(adjList->size());
+		for (int i = 0; i < bridges->size(); ++i) {
+			(*bridges)[i] = new map<int, bool>();
+			for (auto it = adjList->at(i)->begin(); it != adjList->at(i)->end(); ++it)
+				(*(*bridges)[i])[it->first] = false;
+		}
+		return bridges;
+	}
+	MarkedEdges findBridges() {
+		AdjListGraphRepresentation* graph = (AdjListGraphRepresentation*)graphRepresentation;
+
+		MarkedEdges bridges = initMarkedEdges(graph->adjacencyList);
+		vector<bool>* isVisited = new vector<bool>(graph->adjacencyList->size(), false);
+		vector<int>* discoveryTime = new vector<int>(graph->adjacencyList->size());
+		vector<int>* minTime = new vector<int>(graph->adjacencyList->size());
+		vector<int>* parent = new vector<int>(graph->adjacencyList->size(), -1);
+
+		int time = 0;
+		for (int i = 0; i < graph->adjacencyList->size(); ++i)
+			if (!isVisited->at(i))
+				bridgeRecursiveStep(i, time, graph->adjacencyList, isVisited, discoveryTime, minTime, parent, bridges);
+
+		return bridges;
+	}
+	void bridgeRecursiveStep(int u, int& time, AdjacencyList adjList, vector<bool>* isVisited, vector<int>* discoveryTime,
+		vector<int>* minTime, vector<int>* parent, MarkedEdges bridges) {
+		(*isVisited)[u] = true;
+		(*discoveryTime)[u] = (*minTime)[u] = ++time;
+
+		for (auto it = adjList->at(u)->begin(); it != adjList->at(u)->end(); ++it)
+		{
+			int v = it->first;
+			if (!isVisited->at(v))
+			{
+				(*parent)[v] = u;
+				bridgeRecursiveStep(v, time, adjList, isVisited, discoveryTime, minTime, parent, bridges);
+				(*minTime)[u] = min((*minTime)[u], (*minTime)[v]);
+				if ((*minTime)[v] > (*discoveryTime)[u]) {
+					(*(*bridges)[u])[v] = true;
+					//(*(*bridges)[v])[u] = true;
+				}
+			}
+			else if (v != parent->at(u))
+				(*minTime)[u] = min((*minTime)[u], (*discoveryTime)[v]);
+		}
+	}
+	bool tryKuhn(int v, vector<bool> & used, AdjacencyList adjList, vector<int> & mt) {
+		if (used[v])  return false;
+		used[v] = true;
+		for (auto it = adjList->at(v)->begin(); it != adjList->at(v)->end(); ++it) {
+			int to = it->first;
+			if (mt[to] == -1 || tryKuhn(mt[to], used, adjList, mt)) {
+				mt[to] = v;
+				return true;
+			}
+		}
+		return false;
+	}
+
+public:
+	Graph() {}
+	Graph(int n) {
+		graphRepresentation = (GraphRepresentation*) new EdgeListGraphRepresentation(false, true, n, 0);
+	}
+	Graph(const Graph& graph) {
+		copy(graph);
+	}
+	~Graph()
+	{
+		delete graphRepresentation;
+	};
+	Graph& operator=(const Graph& graph) {
+		copy(graph);
+		return *this;
+	}
+
+	void readGraph(string fileName)
+	{
+		ifstream file(fileName);
+		const vector<string> parameters = getGraphParameters(file);
+		graphRepresentation = decideRepresentationType(parameters[0]);
+		graphRepresentation->readGraph(file, parameters);
+		file.close();
+	}
+	void addEdge(int from, int to, int weight) const
+	{
+		graphRepresentation->addEdge(from, to, weight);
+	}
+	void removeEdge(int from, int to) const
+	{
+		graphRepresentation->removeEdge(from, to);
+	}
+	int changeEdge(int from, int to, int newWeight) const
+	{
+		return graphRepresentation->changeEdge(from, to, newWeight);
+	}
+	void transformToAdjList()
+	{
+		if (!graphRepresentation->isAdjListGraph()) {
+			GraphRepresentation* adjListGraph = (GraphRepresentation*)graphRepresentation->transformToAdjList();
+			delete graphRepresentation;
+			graphRepresentation = adjListGraph;
+		}
+	}
+	void transformToAdjMatrix()
+	{
+		if (!graphRepresentation->isAdjMatrixGraph()) {
+			GraphRepresentation* adjMatrixGraph = (GraphRepresentation*)graphRepresentation->transformToAdjMatrix();
+			delete graphRepresentation;
+			graphRepresentation = adjMatrixGraph;
+		}
+	}
+	void transformToListOfEdges()
+	{
+		if (!graphRepresentation->isEdgeListGraph()) {
+			GraphRepresentation* edgeListGraph = (GraphRepresentation*)graphRepresentation->transformToListOfEdges();
+			delete graphRepresentation;
+			graphRepresentation = edgeListGraph;
+		}
+	}
+	void writeGraph(string fileName) const
+	{
+		graphRepresentation->writeGraph(fileName);
+	}
+
+	Graph getSpaingTreePrima() {
 		transformToAdjList();
-		int n;
-		int r;
-		int w;
-		graph->getProperties(n, r, w);
-		Graph result('E', n, r, w);
+		AdjacencyList adjList = ((AdjListGraphRepresentation*)graphRepresentation)->adjacencyList;
 
-		std::vector<bool> used(n, false);
-		std::vector<int> key(n, -1);
-		std::vector<int> parent(n, -1);
-		std::priority_queue<std::pair<int, int>, std::vector<std::pair<int, int>>, QueueComparator> queue;
+		priority_queue<pair<int, int>, vector<pair<int, int>>, greater<pair<int, int>>> pq;
+		int src = 0;
+		vector<int> distances(adjList->size(), INT32_MAX);
+		vector<int> parent(adjList->size(), -1);
+		vector<bool> inMST(adjList->size(), false);
 
-		key[0] = 0;
-		for (int i = 0; i < n; ++i) {
-			queue.emplace(i, key[i]);
-		}
+		pq.push(make_pair(0, src));
+		distances[src] = 0;
 
-		while (!queue.empty()) {
-			int min = queue.top().first;
-			key[min] = queue.top().second;
-			queue.pop();
-
-			if (used[min]) {
-				continue;
-			}
-			used[min] = true;
-
-			if (parent[min] != -1) {
-				result.addEdge(min + 1, parent[min] + 1, graph->getEdge(min + 1, parent[min] + 1));
-			}
-
-			for (auto& edge : graph->getAdjList()[min]) {
-				int v = edge.first - 1;
-				int w = edge.second;
-				if ((!used[v]) && ((w < key[v]) || (key[v] == -1))) {
-					key[v] = w;
-					parent[v] = min;
-					queue.emplace(v, key[v]);
+		while (!pq.empty()) {
+			int u = pq.top().second;
+			pq.pop();
+			inMST[u] = true;
+			for (auto it = adjList->at(u)->begin(); it != adjList->at(u)->end(); ++it) {
+				int v = it->first;
+				int weight = it->second;
+				if (inMST[v] == false && distances[v] > weight) {
+					distances[v] = weight;
+					pq.push(make_pair(distances[v], v));
+					parent[v] = u;
 				}
 			}
 		}
 
-		return result;
+		EdgeListGraphRepresentation* newEdgeListGraph = new EdgeListGraphRepresentation(false, true, adjList->size(), 0);
+		for (size_t i = 1; i < parent.size(); ++i)
+			newEdgeListGraph->addEdge(parent[i], i, distances[i]);
+		Graph* graph = new Graph();
+		graph->graphRepresentation = newEdgeListGraph;
+		return *graph;
 	}
 
-	Graph getSpanningTreeBoruvka() {
+	Graph getSpaingTreeKruscal() {
 		transformToListOfEdges();
-		int n;
-		int r;
-		int w;
-		graph->getProperties(n, r, w);
-		DSU dsu(n);
-		Graph result('E', n, r, w);
+		EdgeListGraphRepresentation* edgeListGraph = (EdgeListGraphRepresentation*)graphRepresentation;
 
-		auto& edges = graph->getListOfEdges();
-		int m = edges.size();
-		int k = n;
+		auto cmp = [](pair<pair<int, int>, int> a, pair<pair<int, int>, int> b) {
+			return a.second < b.second;
+		};
+		auto edgeVector = vector<pair<pair<int, int>, int>>(edgeListGraph->edgeList->begin(), edgeListGraph->edgeList->end());
+		sort(edgeVector.begin(), edgeVector.end(), cmp);
 
-		while (k > 1) {
-			std::vector<int> min(n, -1);
-			bool isForest = true;
-			for (int i = 0; i < m; ++i) {
-				int from = dsu.find(std::get<0>(edges[i])) - 1;
-				int to = dsu.find(std::get<1>(edges[i])) - 1;
-				int weight = std::get<2>(edges[i]);
-				if (from != to) {
-					if ((min[from] == -1) || (weight < std::get<2>(edges[min[from]]))) {
-						min[from] = i;
-						isForest = false;
-					}
-					if ((min[to] == -1) || (weight < std::get<2>(edges[min[to]]))) {
-						min[to] = i;
-						isForest = false;
-					}
-				}
-			}
+		DSU dsu = DSU(edgeListGraph->vertexAmount);
+		for (size_t i = 0; i < edgeListGraph->vertexAmount; ++i)
+			dsu.makeSet(i);
 
-			if (isForest) {
-				break;
-			}
-
-			for (int i = 0; i < n; ++i) {
-				if (min[i] != -1) {
-					int from = std::get<0>(edges[min[i]]);
-					int to = std::get<1>(edges[min[i]]);
-					int weight = std::get<2>(edges[min[i]]);
-					if (dsu.find(from) != dsu.find(to)) {
-						result.addEdge(from, to, weight);
-						dsu.join(from, to);
-						--k;
-					}
-				}
+		EdgeListGraphRepresentation* newEdgeListGraph = new EdgeListGraphRepresentation(false, true, edgeListGraph->vertexAmount, 0);
+		for (size_t i = 0; i < edgeVector.size(); i++)
+		{
+			int from = edgeVector[i].first.first;
+			int to = edgeVector[i].first.second;
+			if (dsu.find(from) != dsu.find(to)) {
+				newEdgeListGraph->addEdge(from, to, edgeVector[i].second);
+				dsu.unite(from, to);
 			}
 		}
-
-		return result;
+		Graph* graph = new Graph();
+		graph->graphRepresentation = newEdgeListGraph;
+		return *graph;
 	}
 
-	int checkEuler(bool& circleExist) {
-		circleExist = false;
-		transformToAdjList();
-		int oddDegree = 0;
-		int startVert = 0;
-		auto& adjList = graph->getAdjList();
+	Graph getSpaingTreeBoruvka() {
+		transformToListOfEdges();
+		EdgeListGraphRepresentation* edgeListGraph = (EdgeListGraphRepresentation*)graphRepresentation;
+		EdgeList edgeList = edgeListGraph->edgeList;
+		int vertexAmount = edgeListGraph->vertexAmount;
+		auto edgeVector = vector<pair<pair<int, int>, int>>(edgeListGraph->edgeList->begin(), edgeListGraph->edgeList->end());
 
-		int n = graph->getSize();
+		DSU dsu = DSU(vertexAmount);
+		for (size_t i = 0; i < edgeListGraph->vertexAmount; ++i)
+			dsu.makeSet(i);
 
-		std::vector<int> edgesNumber(n + 1, 0);
-		std::vector<int> parentsNumber(n + 1, 0);
-
-		for (int i = 0; i < int(adjList.size()); ++i) {
-			if ((adjList[i].size() % 2) != 0) {
-				++oddDegree;
-				startVert = i + 1;
+		EdgeListGraphRepresentation* newEdgeListGraph = new EdgeListGraphRepresentation(false, true, vertexAmount, 0);
+		while (newEdgeListGraph->edgesAmount < vertexAmount - 1) {
+			auto minEdges = map<int, int>();
+			for (int i = 0; i < vertexAmount; ++i)
+				minEdges[i] = -1;
+			for (int i = 0; i < edgeVector.size(); ++i)
+			{
+				auto edge = edgeVector[i];
+				int from = edge.first.first;
+				int to = edge.first.second;
+				int weight = edge.second;
+				int fromComponent = dsu.find(from);
+				int toComponent = dsu.find(to);
+				if (fromComponent != toComponent) {
+					if (minEdges[fromComponent] == -1 || edgeVector[minEdges[fromComponent]].second > weight)
+						minEdges[fromComponent] = i;
+					if (minEdges[toComponent] == -1 || edgeVector[minEdges[toComponent]].second > weight)
+						minEdges[toComponent] = i;
+				}
 			}
-			edgesNumber[i + 1] = adjList[i].size();
+			for (int i = 0; i < minEdges.size(); i++) {
+				if (minEdges[i] != -1) {
+					pair<pair<int, int>, int> edge = edgeVector[minEdges[i]];
+					dsu.unite(edge.first.first, edge.first.second);
+					newEdgeListGraph->addEdge(edge.first.first, edge.first.second, edge.second);
+				}
+			}
 		}
 
-		if (oddDegree > 2) {
+		Graph* graph = new Graph();
+		graph->graphRepresentation = newEdgeListGraph;
+		return *graph;
+	}
+
+	int checkEuler(bool &circleExist) {
+		bool connectedComponentsCheck = graphRepresentation->connectedComponentsCheck();
+		if (!connectedComponentsCheck) {
+			circleExist = false;
 			return 0;
 		}
-
-		transformToListOfEdges();
-		DSU dsu(n);
-		for (auto& edge : graph->getListOfEdges()) {
-			int a;
-			int b;
-			int c;
-			std::tie(a, b, c) = edge;
-			dsu.join(a, b);
-		}
-
-		int num = 0;
-		for (int i = 1; i < n; ++i) {
-			if (dsu.find(i) != dsu.find(i + 1)) {
-				parentsNumber[dsu.find(i)] = 1;
-				parentsNumber[dsu.find(i + 1)] = 1;
-				//return 0;
-			}
-		}
-
-		for (int i = 1; i <= n; i++) {
-			if (parentsNumber[i] == 1 && edgesNumber[i] > 0)
-				num++;
-			if (num > 1) {
-				circleExist = false;
-				return 0;
-			}
-		}
-
-		if (startVert == 0) {
-			circleExist = true;
-			startVert = 1;
-		}
-		return startVert;
+		return graphRepresentation->getBeginVertex(circleExist) + 1;
 	}
 
-	bool isBridge(int a, int b) {
+	vector<int> getEuleranTourFleri() {
+		bool circleExists;
+		int currentVertex = checkEuler(circleExists) - 1;
+		if (!circleExists && currentVertex == -1)
+			return vector<int>();
+
 		transformToAdjList();
-		int n, r, w;
-		graph->getProperties(n, r, w);
-		//Graph gr(*this);
-		//gr.removeEdge(a, b);
-		//removeEdge(a, b);
-		std::queue<int> q;
-		q.push(a);
-		std::vector<bool> used(n + 1);
-		std::vector<int> d(n + 1, 0);
-		used[a] = true;
-		while (!q.empty()) {
-			int v = q.front();
-			q.pop();
-			for (auto& j = /*gr.*/graph->getAdjList()[v - 1].begin(); j != /*gr.*/graph->getAdjList()[v - 1].end(); j++) {
-				int to = j->first;
-				if (v == a && to == b) {
-					continue;
+		AdjacencyList adjList = ((AdjListGraphRepresentation*)graphRepresentation)->copyListWithDuplicates();
+		MarkedEdges bridges = findBridges();
+		MarkedEdges isTraversed = initMarkedEdges(adjList);
+		vector<int> path = vector<int>();
+
+		path.push_back(currentVertex);
+		for (int i = 0; i < graphRepresentation->edgesAmount; ++i) {
+			int nextVertex;
+			bool onlyBridges = true;
+			for (auto it = adjList->at(currentVertex)->begin(); it != adjList->at(currentVertex)->end(); ++it) {
+				if (!(*(*isTraversed)[currentVertex])[it->first]) {
+					if (!(*(*bridges)[currentVertex])[it->first]) {
+						onlyBridges = false;
+						nextVertex = it->first;
+					}
+					else if (onlyBridges)
+						nextVertex = it->first;
 				}
-				if (!used[to]) {
-					used[to] = true;
-					q.push(to);
-					//d[to] = d[v] + 1;
-					if (to == b) {
-						return false;
+			}
+			path.push_back(nextVertex);
+			(*(*isTraversed)[currentVertex])[nextVertex] = true;
+			(*(*isTraversed)[nextVertex])[currentVertex] = true;
+			currentVertex = nextVertex;
+		}
+
+		return path;
+	}
+
+	vector<int> getEuleranTourEffective() {
+		bool circleExists;
+		int currentVertex = checkEuler(circleExists) - 1;
+		if (!circleExists && currentVertex == -1)
+			return vector<int>();
+
+		transformToAdjList();
+		AdjacencyList adjList = ((AdjListGraphRepresentation*)graphRepresentation)->copyListWithDuplicates();
+		MarkedEdges isTraversed = initMarkedEdges(adjList);
+		vector<int> path = vector<int>();
+
+		stack<int> s = stack<int>();
+		s.push(currentVertex);
+		while (!s.empty())
+		{
+			int w = s.top();
+			for (auto it = adjList->at(w)->begin(); it != adjList->at(w)->end(); ++it) {
+				if (!isTraversed->at(w)->at(it->first)) {
+					s.push(it->first);
+					(*isTraversed->at(w))[it->first] = true;
+					(*isTraversed->at(it->first))[w] = true;
+					break;
+				}
+			}
+			if (w == s.top()) {
+				s.pop();
+				path.push_back(w);
+			}
+		}
+
+		return path;
+	}
+
+	int checkBipart(vector<char> &marks) {
+		transformToAdjList();
+		AdjacencyList adjList = ((AdjListGraphRepresentation*)graphRepresentation)->copyListWithDuplicates();
+
+		marks = vector<char>(adjList->size(), -1);
+
+		for (int i = 0; i < adjList->size(); ++i) {
+			if (marks[i] == -1) {
+				queue<int> q = queue<int>();
+				q.push(i);
+				marks[i] = 'A';
+				while (!q.empty()) {
+					int v = q.front();
+					q.pop();
+					for (auto it = adjList->at(v)->begin(); it != adjList->at(v)->end(); ++it) {
+						int to = it->first;
+						if (marks[to] == -1) {
+							if (marks[v] == 'A')
+								marks[to] = 'B';
+							else
+								marks[to] = 'A';
+							q.push(to);
+						}
+						else if (marks[to] == marks[v]) {
+							return 0;
+						}
 					}
 				}
 			}
 		}
-		//addEdge(a, b)
-		//return !d[b];
-		return true;
+
+		return 1;
 	}
 
-	std::vector<int> getEuleranTourFleri() {
-		std::vector<int> res;
-		bool circleExist;
-		int start = checkEuler(circleExist);
-		if (start == 0)
-			return res;
-		transformToAdjList();
-		Graph gr(*this);
-		int currV = start;
-		res.push_back(currV);
-		while (true) {
-			int deg = gr.graph->getAdjList()[currV - 1].size();
-			if (deg == 0)
-				break;
-			bool fl = true;
-			for (auto& i : gr.graph->getAdjList()[currV - 1]) {
-				int nextV = i.first;
-				if ((deg == 1) || !gr.isBridge(currV, nextV)) {
-					fl = false;
-					gr.removeEdge(currV, nextV);
-					currV = nextV;
-					res.push_back(currV);
-					break;
-				}
-			}
-			if (fl) {
-				int nextV = gr.graph->getAdjList()[currV - 1].begin()->first;
-				gr.removeEdge(currV, nextV);
-				currV = nextV;
-				res.push_back(currV);
-			}
-		}
-		return res;
-	}
+	vector<pair<int, int>> getMaximumMatchingBipart() {
+		vector<char> marks = vector<char>(); 
+		checkBipart(marks);
+		vector<pair<int, int>> result = vector<pair<int, int>>();
+		AdjacencyList adjList = ((AdjListGraphRepresentation*)graphRepresentation)->copyListWithDuplicates();
+		vector<int> mt = vector<int>(adjList->size(), -1);
 
-	std::vector<int> getEuleranTourEffective() {
-		std::vector<int> result;
-		bool circleExist;
-		int start = checkEuler(circleExist);
-		if (start == 0) {
-			return result;
-		}
-
-		transformToAdjList();
-		Graph g(*this);
-		auto& adjList = g.graph->getAdjList();
-
-		std::stack<int> stack;
-		stack.push(start);
-		while (!stack.empty()) {
-			int currV = stack.top();
-			for (auto& edge : adjList[currV - 1]) {
-				int nextV = edge.first;
-				stack.push(nextV);
-				g.removeEdge(currV, nextV);
-				break;
+		for (size_t i = 0; i < adjList->size(); i++)
+			if (marks[i] == 'A') {
+				vector<bool> used = vector<bool>(adjList->size(), false);
+				tryKuhn(i, used, adjList, mt);
 			}
-			if (currV == stack.top()) {
-				stack.pop();
-				result.push_back(currV);
+		for (size_t i = 0; i < adjList->size(); i++)
+			if (marks[i] == 'B') {
+				if (mt[i] != -1)
+					result.push_back(make_pair(mt[i], i));
 			}
-		}
 		return result;
 	}
 
-	bool checkBipart(std::vector<char>& marks) {
-		transformToAdjList();
-		int n = graph->getAdjList().size();
-		std::queue<int> q;
-		if (n < 2)
-			return false;
-		for (int vert = 1; vert <= n; vert++) {
-			if (marks[vert] != 'A' && marks[vert] != 'B') {
-				marks[vert] = 'A';
-				q.push(vert);
-				//int counter = 1;
-				while (!q.empty()) {
-					int prevV = q.front();
-					q.pop();
-					for (auto& i : graph->getAdjList()[prevV - 1]) {
-						if (marks[i.first] != 'A' && marks[i.first] != 'B') {
-							marks[i.first] = marks[prevV] == 'A' ? 'B' : 'A';
-							q.push(i.first);
-							//counter++;
-						}
-						else {
-							if (marks[i.first] == marks[prevV]) {
-								return false;
-							}
-						}
-					}
-				}
-			}
-		}
-		return true;
-	}
-
-
-	std::vector<std::pair<int, int>> getMaximumMatchingBipart() {
-		transformToAdjList();
-		int n = graph->getAdjList().size();
-		std::vector<std::pair<int, int>> res;
-		std::vector<int> currBipart(n + 1, -1);
-		std::vector<char> marks(n + 1, 'Z');
-		std::vector<bool> used(n + 1, false);
-
-		std::vector<bool> used1(n + 1);
-		for (int i = 1; i <= n; i++) {
-			if (marks[i] == 'B')
-				continue;
-			for (auto& j : graph->getAdjList()[i - 1]) {
-				if (currBipart[j.first] == -1) {
-					currBipart[j.first] = i;
-					used1[i] = true;
-					break;
-				}
-			}
-		}
-
-		if (checkBipart(marks)) {
-			for (int i = 1; i <= n; i++) {
-				if (used1[i] || marks[i] == 'B')
-					continue;
-				used.assign(n + 1, false);
-				//kuhnDFS(i, used, currBipart);
-			}
-			for (int i = 1; i <= n; i++) {
-				if (marks[i] == 'B' && currBipart[i] != -1)
-					res.emplace_back(currBipart[i], i);
-			}
-
-		}
-		return res;
-	}
-
-	struct Edge {
-		int from, to, next, flow, cap;
-		Edge() {}
-		Edge(int from, int to, int next, int f, int c) : from(from), to(to), next(next), flow(f), cap(c)
-		{}
-	};
-
-	int dfsPush(int source, int sink, int flow, std::vector<Edge> &edges, std::vector<int> &head, std::vector<bool> &used) {
-		if (source == sink)
-			return flow;
-		used[source] = true;
-		for (int i = head[source]; i != -1; i = edges[i].next)
-			if (!used[edges[i].to] && edges[i].flow < edges[i].cap) {
-				int pushed = dfsPush(edges[i].to, sink, std::min(flow, edges[i].cap - edges[i].flow), edges, head, used);
-				if (pushed) {
-					edges[i].flow += pushed;
-					edges[i ^ 1].flow -= pushed;
-					return pushed;
-				}
-			}
-		return 0;
+	int calc() {
+		return graphRepresentation->calc();
 	}
 };
